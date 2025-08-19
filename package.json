@@ -1,22 +1,19 @@
 {
-  "name": "dev.sleightly.template",
-  "displayName": "JS-Template",
-  "version": "0.0.0",
-  "description": "A VPM Package Template",
-  "url": "https://github.com/JustSleightly/JS-Template",
-  "vpmDependencies": {
-    "com.vrchat.avatars": "^3.8.0"
-  },
+  "name": "com.tohruthedragon.meshboundstool",
+  "displayName": "TohruTheDragon - Mesh Bounds Tool",
+  "version": "1.0.0",
+  "description": "A tool to manage your's mesh's bounds",
+  "url": "https://github.com/fkrisi11/MeshBoundsTool",
+  "vpmDependencies": {},
   "type": "tool",
   "keywords": [
-    "JustSleightly",
-    "Sleightly",
-    "VRChat",
-    "Template"
+     "vrchat",
+     "mesh",
+     "bounds",
+     "tool",
+     "culling"
   ],
   "author": {
-    "name": "JustSleightly",
-    "email": "just@sleightly.dev",
-    "url": "https://just.sleightly.dev"
+    "name": "TohruTheDragon"
   }
 }
