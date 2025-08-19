@@ -2,7 +2,7 @@
   "name": "com.tohruthedragon.meshboundstool",
   "displayName": "TohruTheDragon - Mesh Bounds Tool",
   "version": "1.0.0",
-  "description": "A tool to manage your's mesh's bounds",
+  "description": "A tool to manage your mesh's bounds",
   "url": "https://github.com/fkrisi11/MeshBoundsTool",
   "vpmDependencies": {},
   "type": "tool",
