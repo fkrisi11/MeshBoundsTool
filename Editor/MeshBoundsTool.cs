@@ -8,6 +8,8 @@ public class MeshBoundsTool : EditorWindow
     private Vector3 worldBoundsCenter;
     private Vector3 worldBoundsSize;
     private Transform newRootBone;
+    private Transform originalRootBone;
+    private Bounds lastKnownBounds;
 
     private static Vector3 copiedCenter;
     private static Vector3 copiedSize;
@@ -34,12 +36,15 @@ public class MeshBoundsTool : EditorWindow
         if (targetSMR != null)
         {
             UpdateWorldBounds();
+            StoreBoundsState();
             Repaint();
         }
     }
 
     private void OnGUI()
     {
+        CheckForExternalBoundsChanges();
+
         GUILayout.Label("Mesh Bounds Tool", EditorStyles.boldLabel);
         EditorGUILayout.Space();
 
@@ -49,6 +54,8 @@ public class MeshBoundsTool : EditorWindow
         if (EditorGUI.EndChangeCheck() && targetSMR != null)
         {
             UpdateWorldBounds();
+            FindOriginalRootBone();
+            StoreBoundsState();
         }
 
         if (targetSMR == null)
@@ -69,7 +76,7 @@ public class MeshBoundsTool : EditorWindow
             ApplyWorldBoundsToSMR();
         }
 
-        EditorGUILayout.Space();
+        EditorGUILayout.Space(30);
 
         EditorGUILayout.BeginHorizontal();
         if (GUILayout.Button("Copy Bounds"))
@@ -91,6 +98,7 @@ public class MeshBoundsTool : EditorWindow
 
         GUI.enabled = false;
         EditorGUILayout.ObjectField("Current Root:", targetSMR.rootBone, typeof(Transform), true);
+        EditorGUILayout.ObjectField("Original Root:", originalRootBone, typeof(Transform), true);
         GUI.enabled = true;
 
         newRootBone = (Transform)EditorGUILayout.ObjectField("New Root Bone", newRootBone, typeof(Transform), true);
@@ -102,12 +110,32 @@ public class MeshBoundsTool : EditorWindow
         }
         GUI.enabled = true;
 
-        EditorGUILayout.Space(30);
+        EditorGUILayout.Space();
 
-        GUILayout.Label("Bounds Calculation", EditorStyles.boldLabel);
         if (GUILayout.Button("Recalculate Bounds"))
         {
             RecalculateBounds();
+        }
+    }
+
+    private void CheckForExternalBoundsChanges()
+    {
+        if (targetSMR == null) return;
+
+        if (lastKnownBounds.center != targetSMR.localBounds.center ||
+            lastKnownBounds.size != targetSMR.localBounds.size)
+        {
+            UpdateWorldBounds();
+            StoreBoundsState();
+            Repaint();
+        }
+    }
+
+    private void StoreBoundsState()
+    {
+        if (targetSMR != null)
+        {
+            lastKnownBounds = targetSMR.localBounds;
         }
     }
 
@@ -144,6 +172,8 @@ public class MeshBoundsTool : EditorWindow
 
         targetSMR.localBounds = new Bounds(localCenter, localSize);
         EditorUtility.SetDirty(targetSMR);
+
+        StoreBoundsState();
     }
 
     private void CopyBounds()
@@ -186,9 +216,82 @@ public class MeshBoundsTool : EditorWindow
         targetSMR.localBounds = new Bounds(localCenter, localSize);
 
         UpdateWorldBounds();
+        StoreBoundsState();
 
         EditorUtility.SetDirty(targetSMR);
         newRootBone = null;
+    }
+
+    private void FindOriginalRootBone()
+    {
+        originalRootBone = null;
+
+        if (targetSMR == null || targetSMR.sharedMesh == null) return;
+
+        string assetPath = AssetDatabase.GetAssetPath(targetSMR.sharedMesh);
+
+        if (!string.IsNullOrEmpty(assetPath))
+        {
+            Object[] assets = AssetDatabase.LoadAllAssetsAtPath(assetPath);
+
+            foreach (var asset in assets)
+            {
+                if (asset is GameObject prefab)
+                {
+                    SkinnedMeshRenderer[] smrs = prefab.GetComponentsInChildren<SkinnedMeshRenderer>();
+                    foreach (var smr in smrs)
+                    {
+                        if (smr.sharedMesh == targetSMR.sharedMesh)
+                        {
+                            if (smr.rootBone != null)
+                            {
+                                // Find the corresponding bone in our current hierarchy
+                                originalRootBone = FindCorrespondingBone(smr.rootBone, targetSMR.transform);
+
+                                if (originalRootBone == null)
+                                {
+
+                                    // Try a broader search - search from the scene root or the entire hierarchy
+                                    Transform[] allTransforms = null;
+
+                                    // First try searching from the root of the GameObject hierarchy
+                                    Transform rootTransform = targetSMR.transform;
+                                    while (rootTransform.parent != null)
+                                    {
+                                        rootTransform = rootTransform.parent;
+                                    }
+                                    allTransforms = rootTransform.GetComponentsInChildren<Transform>();
+
+                                    foreach (Transform t in allTransforms)
+                                    {
+                                        if (t.name == smr.rootBone.name)
+                                        {
+                                            originalRootBone = t;
+                                            break;
+                                        }
+                                    }
+
+                                    // If still not found, try searching just the bones array of the current SMR
+                                    if (originalRootBone == null && targetSMR.bones != null)
+                                    {
+                                        foreach (Transform bone in targetSMR.bones)
+                                        {
+                                            if (bone != null && bone.name == smr.rootBone.name)
+                                            {
+                                                originalRootBone = bone;
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            return;
+                        }
+                    }
+                }
+            }
+        }
     }
 
     private void RecalculateBounds()
@@ -197,7 +300,23 @@ public class MeshBoundsTool : EditorWindow
 
         Undo.RecordObject(targetSMR, "Recalculate Default SMR Bounds");
 
-        // Try to get bounds from the original asset
+        Transform savedCurrentRootBone = targetSMR.rootBone;
+
+        if (originalRootBone == null)
+        {
+            FindOriginalRootBone();
+        }
+
+        if (originalRootBone != null)
+        {
+            targetSMR.rootBone = originalRootBone;
+            Debug.Log($"<color=green>[Mesh Bounds Tool]</color> Temporarily set root to original: {originalRootBone.name}");
+        }
+
+        Vector3 savedWorldCenter = Vector3.zero;
+        Vector3 savedWorldSize = Vector3.zero;
+        bool hasSavedBounds = false;
+
         string assetPath = AssetDatabase.GetAssetPath(targetSMR.sharedMesh);
 
         if (!string.IsNullOrEmpty(assetPath))
@@ -214,17 +333,91 @@ public class MeshBoundsTool : EditorWindow
                         if (smr.sharedMesh == targetSMR.sharedMesh)
                         {
                             targetSMR.localBounds = smr.localBounds;
-                            UpdateWorldBounds();
-                            EditorUtility.SetDirty(targetSMR);
 
-                            return;
+                            // Save the world transforms after applying original bounds with original root
+                            Transform rootTransform = targetSMR.rootBone != null ? targetSMR.rootBone : targetSMR.transform;
+                            savedWorldCenter = rootTransform.TransformPoint(targetSMR.localBounds.center);
+                            savedWorldSize = Vector3.Scale(targetSMR.localBounds.size, rootTransform.lossyScale);
+                            hasSavedBounds = true;
+
+                            break;
                         }
                     }
+                    if (hasSavedBounds) break;
                 }
             }
         }
 
-        RecalculateDefaultBoundsManual();
+        if (originalRootBone != null && savedCurrentRootBone != originalRootBone)
+        {
+            targetSMR.rootBone = savedCurrentRootBone;
+
+            if (hasSavedBounds)
+            {
+                Transform restoredRootTransform = targetSMR.rootBone != null ? targetSMR.rootBone : targetSMR.transform;
+                Vector3 localCenter = restoredRootTransform.InverseTransformPoint(savedWorldCenter);
+                Vector3 localSize = new Vector3(
+                    Mathf.Abs(savedWorldSize.x / restoredRootTransform.lossyScale.x),
+                    Mathf.Abs(savedWorldSize.y / restoredRootTransform.lossyScale.y),
+                    Mathf.Abs(savedWorldSize.z / restoredRootTransform.lossyScale.z)
+                );
+
+                targetSMR.localBounds = new Bounds(localCenter, localSize);
+            }
+        }
+
+        // If no asset bounds found, fallback to manual method
+        if (hasSavedBounds)
+        {
+            UpdateWorldBounds();
+            EditorUtility.SetDirty(targetSMR);
+        }
+        else
+        {
+            RecalculateDefaultBoundsManual();
+        }
+    }
+
+    private Transform FindCorrespondingBone(Transform originalBone, Transform searchRoot)
+    {
+        Transform[] allTransforms = searchRoot.GetComponentsInChildren<Transform>();
+
+        foreach (Transform t in allTransforms)
+        {
+            if (t.name == originalBone.name)
+            {
+                if (DoesHierarchyMatch(originalBone, t))
+                {
+                    return t;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private bool DoesHierarchyMatch(Transform original, Transform candidate)
+    {
+        Transform origParent = original.parent;
+        Transform candParent = candidate.parent;
+
+        int levelsToCheck = 2;
+        for (int i = 0; i < levelsToCheck; i++)
+        {
+            if (origParent == null && candParent == null)
+                return true; // Both reached root
+
+            if (origParent == null || candParent == null)
+                return false; // One reached root, other didn't
+
+            if (origParent.name != candParent.name)
+                return false; // Names don't match
+
+            origParent = origParent.parent;
+            candParent = candParent.parent;
+        }
+
+        return true;
     }
 
     private void RecalculateDefaultBoundsManual()
