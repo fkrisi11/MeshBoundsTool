@@ -1,5 +1,6 @@
 # Mesh Bounds Tool
-A tool to manage your mesh's bounds
+A tool to manage your mesh's bounds<br>
+Menu can be found at ``TohruTheDragon/Mesh Bounds Tool``
 
 - Change your mesh bound transforms in world space
 - Copy and Paste bounds, evne between different meshes
@@ -9,6 +10,7 @@ A tool to manage your mesh's bounds
 
 Download the latest version here: [Link](https://github.com/fkrisi11/MeshBoundsTool/releases/latest) <br>
 Or download it via VCC: [Link](https://fkrisi11.github.io/VPM-Package-Listing/)
+
 
 
 
